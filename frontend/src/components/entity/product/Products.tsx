@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/config';
@@ -26,6 +26,8 @@ export default function Products() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const { data: products, isPending, error } = useQuery({ queryKey: ['products'], queryFn: fetchProducts });
   const { darkMode } = useTheme();
 
@@ -34,6 +36,44 @@ export default function Products() {
       product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.description.toLowerCase().includes(searchTerm.toLowerCase()),
   );
+
+  const suggestions = useMemo(() => {
+    const trimmedSearchTerm = searchTerm.trim().toLowerCase();
+    if (!trimmedSearchTerm || !products) {
+      return [];
+    }
+    return products
+      .filter((product) => product.name.toLowerCase().includes(trimmedSearchTerm))
+      .slice(0, 5);
+  }, [products, searchTerm]);
+
+  const handleSelectSuggestion = (product: Product) => {
+    setSearchTerm(product.name);
+    setShowSuggestions(false);
+    setActiveSuggestionIndex(-1);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) {
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) => (prev + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) => (prev <= 0 ? suggestions.length - 1 : prev - 1));
+    } else if (e.key === 'Enter') {
+      if (activeSuggestionIndex >= 0) {
+        e.preventDefault();
+        handleSelectSuggestion(suggestions[activeSuggestionIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setActiveSuggestionIndex(-1);
+    }
+  };
 
   // Inconsistent loop direction example: process products in reverse incorrectly
   if (filteredProducts && filteredProducts.length === 0) {
@@ -109,9 +149,26 @@ export default function Products() {
               type="text"
               placeholder="Search products..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setShowSuggestions(true);
+                setActiveSuggestionIndex(-1);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onKeyDown={handleSearchKeyDown}
+              onBlur={() => {
+                // Delay hiding so click on a suggestion registers first.
+                setTimeout(() => setShowSuggestions(false), 100);
+              }}
               className={`w-full px-4 py-2 ${darkMode ? 'bg-gray-800 text-light border-gray-700' : 'bg-white text-gray-800 border-gray-300'} rounded-lg border focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-colors duration-300`}
               aria-label="Search products"
+              role="combobox"
+              aria-expanded={showSuggestions && suggestions.length > 0}
+              aria-controls="product-search-suggestions"
+              aria-autocomplete="list"
+              aria-activedescendant={
+                activeSuggestionIndex >= 0 ? `product-suggestion-${suggestions[activeSuggestionIndex].productId}` : undefined
+              }
             />
             <svg
               className={`absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'} transition-colors duration-300`}
@@ -124,6 +181,31 @@ export default function Products() {
             >
               <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
             </svg>
+
+            {showSuggestions && suggestions.length > 0 && (
+              <ul
+                id="product-search-suggestions"
+                role="listbox"
+                aria-label="Product search suggestions"
+                className={`absolute z-10 mt-1 w-full rounded-lg border shadow-lg overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'}`}
+              >
+                {suggestions.map((product, index) => (
+                  <li
+                    key={product.productId}
+                    id={`product-suggestion-${product.productId}`}
+                    role="option"
+                    aria-selected={index === activeSuggestionIndex}
+                    onMouseDown={() => handleSelectSuggestion(product)}
+                    onMouseEnter={() => setActiveSuggestionIndex(index)}
+                    className={`px-4 py-2 cursor-pointer ${darkMode ? 'text-light' : 'text-gray-800'} ${
+                      index === activeSuggestionIndex ? (darkMode ? 'bg-gray-700' : 'bg-gray-100') : ''
+                    }`}
+                  >
+                    {product.name}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* Empty state when no products match */}
