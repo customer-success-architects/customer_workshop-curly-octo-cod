@@ -54,6 +54,33 @@ test.describe('Product catalog discovery', () => {
     await expect(description).toBeVisible();
   });
 
+  test('Autocomplete suggestions appear while typing in the search bar', async ({ page }) => {
+    // Given I am viewing the product catalog
+    await page.goto('/products');
+    await expect(page.locator('h1:has-text("Products")')).toBeVisible();
+
+    // And the catalog includes "SmartFeeder One"
+    const productGrid = page.locator('div[class*="grid"]').filter({ hasText: 'SmartFeeder One' });
+    await expect(productGrid).toBeVisible();
+
+    // When I start typing a partial product name into the search bar
+    const searchInput = page.locator('input[aria-label="Search products"]');
+    await searchInput.fill('SmartFeed');
+
+    // Then an autocomplete suggestion list appears with a matching suggestion
+    const suggestionsList = page.locator('#product-search-suggestions');
+    await expect(suggestionsList).toBeVisible();
+    const suggestion = suggestionsList.locator('li', { hasText: 'SmartFeeder One' });
+    await expect(suggestion).toBeVisible();
+
+    // When I click the suggestion
+    await suggestion.click();
+
+    // Then the search bar is filled with the selected suggestion and suggestions close
+    await expect(searchInput).toHaveValue('SmartFeeder One');
+    await expect(suggestionsList).toBeHidden();
+  });
+
   test('Search for a product with no matches', async ({ page }) => {
     // Given I am viewing the product catalog
     await page.goto('/products');
